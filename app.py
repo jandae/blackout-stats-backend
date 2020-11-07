@@ -2,10 +2,11 @@ import flask
 import cache
 
 app = flask.Flask(__name__)
-app.config["DEBUG"] = True
+app.config["DEBUG"] = False
 
-@app.route('/api/data', methods=['GET'])
+@app.route('/data', methods=['GET'])
 def getData():
     return cache.getCached('computed:all')
 
-app.run(host='0.0.0.0')
+if __name__ == "__main__":
+    app.run(host='0.0.0.0')
