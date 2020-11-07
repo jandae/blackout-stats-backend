@@ -1,12 +1,12 @@
 # needed a quick way to store mysql processed data to redis because I just have this weekend to work
 # on this 🤪
-
 import mysql.connector
 import json
-import redis
-import datetime
-import time
+import cache
 
+from datetime import datetime, timedelta
+
+# move this to config
 mydb = mysql.connector.connect(
 	host="localhost",
 	user="root",
@@ -14,14 +14,7 @@ mydb = mysql.connector.connect(
 	database="blackout-stats"
 )
 
-redis_host = "localhost"
-redis_port = 6379
-redis_password = ""
-
-try:
-	r = redis.StrictRedis(host=redis_host, port=redis_port, password=redis_password, decode_responses=True)
-except Exception as e:
-	print(e)
+# end to move to config
 
 cursor = mydb.cursor(dictionary=True)
 
@@ -30,22 +23,14 @@ def query(query):
 	result = cursor.fetchall()
 	return result
 
-def cacheData(key, value):
-	try:
-		r.set(key, value)
-	except Exception as e:
-		print(e)
-
-def getCached(key):
-	msg = r.get(key)
-	return msg
-
-def totaldaysCount(start = datetime.datetime(2020,4,4)):
-	delta = datetime.datetime.now() - start
+def totaldaysCount(start = datetime(2020,4,4)):
+	delta = datetime.now() - start
 	return delta.days
 
-def numToDate(week_num, year = 2020):
-	time.asctime(time.strptime('{} {} 1'.format(year, week_num), '%Y %W %w'))
+def numToDateRange(start_num, year = 2020):
+	start_date = datetime.strptime('{} {} 1'.format(year, start_num), '%Y %W %w').date()
+	end_date = start_date + timedelta(days=6)
+	return start_date.strftime("%m/%d/%Y") + " - " + end_date.strftime("%m/%d/%Y")
 
 def main():
 	all_posts_query = "SELECT count(*) as count FROM posts"
@@ -86,27 +71,21 @@ def main():
 			highest = week["count"]
 
 	print("highest:", highest)
-	print(grouped_weeks[highest][0])
+	print("highest group weeks:", numToDateRange(grouped_weeks[highest][0]))
 
-	print("highest group weeks:", )
+	days_percent = round(int(cache.getCached('total:days'))/totaldaysCount() * 100, 2)
 
-	cacheData('total:all', all_posts)
-	cacheData('total:blackouts', blackout_posts)
-	cacheData('total:days', days)
-	cacheData('total:days', days)
-	cacheData('total:with_photo', with_photo)
-	cacheData('average:week_days', average_days_week)
-	cacheData('average:duration', avg_duration)
+	data = {
+		'total_all': all_posts,
+		'total_blackouts': blackout_posts,
+		'total_days': days,
+		'total_with_photo': with_photo,
+		'average_week_days': average_days_week,
+		'average_duration': avg_duration,
+		'percent_days': days_percent
+	}
 
-	days_percent = round(int(getCached('total:days'))/totaldaysCount() * 100, 2)
-
-	print("all:",getCached('total:all'))
-	print("blackout posts:", getCached('total:blackouts'))
-	print("days:", getCached('total:days'), "/", totaldaysCount())
-	print("days percent:", days_percent)
-	print("post photo:", getCached('total:with_photo'), "/", getCached('total:blackouts'))
-	print("Average days per week:", getCached('average:week_days'))
-	print("Average duration:", getCached('average:duration'))
+	cache.cacheData('computed:all', json.dumps(data))
 
 if __name__ == '__main__':
 	main()
