@@ -2,25 +2,28 @@
 # on this 🤪
 import mysql.connector
 import json
-import cache
-
+from cache import cacheData
 from datetime import datetime, timedelta
+from config import Config
 
-# move this to config
-mydb = mysql.connector.connect(
-	host="localhost",
-	user="root",
-	password="",
-	database="blackout-stats"
-)
+try:
+	mydb = mysql.connector.connect(
+		host=Config.mysql_host,
+		user=Config.mysql_user,
+		password=Config.mysql_password,
+		database=Config.mysql_database
+	)
 
-# end to move to config
-
-cursor = mydb.cursor(dictionary=True)
+	cursor = mydb.cursor(dictionary=True)
+except Exception as e:
+	print(e)
 
 def query(query):
-	cursor.execute(query)
-	result = cursor.fetchall()
+	try:
+		cursor.execute(query)
+		result = cursor.fetchall()
+	except Exception as e:
+		print(e)
 	return result
 
 def totaldaysCount(start = datetime(2020,4,4)):
@@ -73,7 +76,7 @@ def main():
 	print("highest:", highest)
 	print("highest group weeks:", numToDateRange(grouped_weeks[highest][0]))
 
-	days_percent = round(int(cache.getCached('total:days'))/totaldaysCount() * 100, 2)
+	days_percent = round(int(blackout_posts)/totaldaysCount() * 100, 2)
 
 	data = {
 		'total_all': all_posts,
@@ -85,7 +88,7 @@ def main():
 		'percent_days': days_percent
 	}
 
-	cache.cacheData('computed:all', json.dumps(data))
+	cacheData('computed', data)
 
 if __name__ == '__main__':
 	main()

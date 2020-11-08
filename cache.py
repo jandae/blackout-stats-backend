@@ -1,20 +1,26 @@
 import redis
-
-redis_host = "localhost"
-redis_port = 6379
-redis_password = ""
+from config import Config
 
 try:
-	r = redis.StrictRedis(host=redis_host, port=redis_port, password=redis_password, decode_responses=True)
+	r = redis.StrictRedis(
+			host=Config.redis_host,
+			port=Config.redis_port,
+			password=Config.redis_password,
+			decode_responses=True
+		)
 except Exception as e:
 	print(e)
 
 def cacheData(key, value):
 	try:
-		r.set(key, value)
+		r.hmset(key, value)
 	except Exception as e:
 		print(e)
 
 def getCached(key):
+	msg = r.hgetall(key)
+	return msg
+
+def getSingleCached(key):
 	msg = r.get(key)
 	return msg
