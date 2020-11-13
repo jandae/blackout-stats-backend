@@ -21,6 +21,9 @@ def urlToJson(url):
 
 def formatPosts(posts):
     formatted_posts = []
+    display = ['table_id', 'id', 'datetime', 'category', 'text', 'date', 'start_time', 'end_time', 'duration', 'cause', 'areas']
+    
+    display = ['text', 'areas']
 
     for post in posts:
         formatted = {}
@@ -35,29 +38,37 @@ def formatPosts(posts):
         formatted["category"] = category if category else "NULL"
         formatted["text"] = post["postText"] if post["postText"] else "NULL"
 
-        # formatted["date"] = "NULL"
-        # formatted["start_time"] = "NULL"
-        # formatted["end_time"] = "NULL"
-        # formatted["duration"] = "NULL"
-        # formatted["cause"] = "NULL"
+        formatted["date"] = "NULL"
+        formatted["start_time"] = "NULL"
+        formatted["end_time"] = "NULL"
+        formatted["duration"] = "NULL"
+        formatted["cause"] = "NULL"
         formatted["areas"] = "NULL"
 
         if formatted["category"] != "uncategorized":
             post_meta = parsePostMeta(post["postText"])
-            # formatted["date"] = post_meta["date"] if post_meta["date"] else "NULL"
-            # formatted["start_time"] = post_meta["start_datetime"] if post_meta["start_datetime"] else "NULL"
-            # formatted["end_time"] = post_meta["end_datetime"] if post_meta["end_datetime"] else "NULL"
-            # formatted["duration"] = post_meta["duration"] if post_meta["duration"] else "NULL"
-            # formatted["cause"] = post_meta["cause"] if post_meta["cause"] else "NULL"
+            formatted["date"] = post_meta["date"] if post_meta["date"] else "NULL"
+            formatted["start_time"] = post_meta["start_datetime"] if post_meta["start_datetime"] else "NULL"
+            formatted["end_time"] = post_meta["end_datetime"] if post_meta["end_datetime"] else "NULL"
+            formatted["duration"] = post_meta["duration"] if post_meta["duration"] else "NULL"
+            formatted["cause"] = post_meta["cause"] if post_meta["cause"] else "NULL"
             formatted["areas"] = post_meta["areas"] if post_meta["areas"] else "NULL"
 
-        # formatted["photos"] = post_images if post_images else "NULL"
-        # comments = post['postComments']['comments']
-        # formatted["ali_comment"] = findAliComment(comments)
+        formatted["photos"] = post_images if post_images else "NULL"
+        comments = post['postComments']['comments']
+        formatted["ali_comment"] = findAliComment(comments)
 
         formatted_posts.append(formatted)
-
-    return formatted_posts
+        displayable_list = []
+        
+        for post in formatted_posts:
+            displayable = {}
+            for col in post.keys():
+                if col in display:
+                    displayable[col] = post[col]
+            displayable_list.append(displayable)
+                
+    return displayable_list
 
 def findAliComment(comments):
     ali_comment = "NULL"
@@ -94,36 +105,52 @@ def findMatch(text, pattern, groups=[1]):
         return formatted.strip()
     return False
 
+def searchPattern(text, key, pattern_key):
+    patterns = {
+        # AREAS AFFECTED: Feeder 4
+        # Baguio City: Victoria Village, Quezon Hill Proper, ...
+        # has to have feeder and number after colon
+        'area_1':"^"+key+"\s*:\s*(\s*(\d\d*\.*\s*)*feeder\s*\d\d*$)(\s*(.*)\s*:\s*(.*)$)*",
+        
+        # AREAS AFFECTED:
+        # Kapangan: Balakbak, Beleng-Belis, Boklaoan, Cayapes, Cuba, Datakan, Gadang, 
+        # has to have next line with colon
+        'area_2':"^"+key+"\s*:\s*\n(.*\s*:\s*)(.*)$(\n*.*\s*:\s*.*$)*",
+        
+        # AREAS AFFECTED: Dacap, Nagawa - Ampucao Itogon
+        # single line after colon
+        'area_3':"^"+key+"\s*:\s*\w*\s*(.*)$",
+    }
+        
+    pattern = re.search(
+        patterns[pattern_key],
+        text,
+        flags = re.IGNORECASE|re.MULTILINE
+    )
+    
+    return pattern
+    
 def parseAreas(text):
     keywords = ["areas affected"]
     areas = "NULL"
 
+    # this is the best way I could think of so it will check and assign pattern once
+    # maybe theres a better way
     for key in keywords:
-        # AREAS AFFECTED: Feeder 4
-        # Baguio City: Victoria Village, Quezon Hill Proper, ...
-        title_pattern3 = re.search(
-            "^"+key+"\s*:\s*(\s*(\d\d*\.*\s*)*feeder\s*\d\d*$)(\s*(.*)\s*:\s*(.*)$)*",
-            text,
-            flags = re.IGNORECASE|re.MULTILINE
-        )
-
-
-        if title_pattern3:
-            areas = title_pattern3.group().split('\n')
-            print(areas)
+        pattern_1 = searchPattern(text, key, 'area_1')
+        if pattern_1:
+            areas = re.sub(key+':\s', '', pattern_1.group(), flags = re.IGNORECASE)
             break
         else:
-            # AREAS AFFECTED: Dacap, Nagawa - Ampucao Itogon
-            title_pattern1 = re.search(
-                "^"+key+"\s*:\s*(.*\s*:\s*)*(\w.*)$",
-                text,
-                flags = re.IGNORECASE|re.MULTILINE
-            )
-            if title_pattern1:
-                areas = title_pattern1.group(2).split(',')
-            break
-
-
+            pattern_2 = searchPattern(text, key, 'area_2')
+            if pattern_2:
+                areas = re.sub(key+':\s', '', pattern_2.group(), flags = re.IGNORECASE)
+                break
+            else: 
+                pattern_3 = searchPattern(text, key, 'area_3')
+                if pattern_3:
+                    areas = re.sub(key+':\s', '', pattern_3.group(), flags = re.IGNORECASE)
+                    break
     return areas
 
 def parseCause(text):
@@ -511,7 +538,7 @@ def writeCSV(posts):
             count += 1
 
         post_data = list(post.values())
-        post_data[4] = csv_formatter(post_data[4]) # process text to make it csv safe
+        # post_data[4] = csv_formatter(post_data[4]) # process text to make it csv safe
 
         # Writing data of CSV file
         csv_writer.writerow(post_data)
