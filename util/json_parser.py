@@ -44,7 +44,9 @@ def formatPosts(posts):
         formatted["duration"] = "NULL"
         formatted["cause"] = "NULL"
         formatted["areas"] = "NULL"
-
+        formatted["areas_parent"] = "NULL"
+        formatted["areas"] = "NULL"
+    
         if formatted["category"] != "uncategorized":
             post_meta = parsePostMeta(post["postText"])
             formatted["date"] = post_meta["date"] if post_meta["date"] else "NULL"
@@ -52,6 +54,7 @@ def formatPosts(posts):
             formatted["end_time"] = post_meta["end_datetime"] if post_meta["end_datetime"] else "NULL"
             formatted["duration"] = post_meta["duration"] if post_meta["duration"] else "NULL"
             formatted["cause"] = post_meta["cause"] if post_meta["cause"] else "NULL"
+            formatted["area_parent"] = post_meta["areas"] if post_meta["areas"] else "NULL"
             formatted["areas"] = post_meta["areas"] if post_meta["areas"] else "NULL"
 
         formatted["photos"] = post_images if post_images else "NULL"
@@ -117,6 +120,10 @@ def searchPattern(text, key, pattern_key):
         # has to have next line with colon
         'area_2':"^"+key+"\s*:\s*\n(.*\s*:\s*)(.*)$(\n*.*\s*:\s*.*$)*",
         
+        # AREAS AFFECTED: Kapangan: Balakbak, Beleng-Belis, Boklaoan, Cayapes, Cuba, Datakan, Gadang, 
+        # has to have one colon after colon
+        'area_4':"^"+key+"\s*:\s*(\w+[ ]*\w*:[ ]*(.*$)\n)+",
+        
         # AREAS AFFECTED: Dacap, Nagawa - Ampucao Itogon
         # single line after colon
         'area_3':"^"+key+"\s*:\s*\w*\s*(.*)$",
@@ -130,6 +137,25 @@ def searchPattern(text, key, pattern_key):
     
     return pattern
     
+def processAreas(areas, key, pattern):
+    areas = re.sub(key+':\s', '', areas, flags = re.IGNORECASE).split('\n')
+    processed = []
+    
+    return json.dumps(areas) + '=====' + pattern
+    
+    for area in areas:
+        item = {}
+        if ':' in area:
+            area_arr = area.strip().split(':')            
+            item["parent"] = area_arr[0]
+            if len(area_arr) > 1:
+                item["children"] = area_arr[1].split(',')
+            
+        else:
+            item["children"] = area.split(',')            
+        processed.append(item)
+    return processed
+    
 def parseAreas(text):
     keywords = ["areas affected"]
     areas = "NULL"
@@ -139,18 +165,23 @@ def parseAreas(text):
     for key in keywords:
         pattern_1 = searchPattern(text, key, 'area_1')
         if pattern_1:
-            areas = re.sub(key+':\s', '', pattern_1.group(), flags = re.IGNORECASE)
+            areas = processAreas(pattern_1.group(), key, '1')
             break
         else:
             pattern_2 = searchPattern(text, key, 'area_2')
             if pattern_2:
-                areas = re.sub(key+':\s', '', pattern_2.group(), flags = re.IGNORECASE)
+                areas = processAreas(pattern_2.group(), key, '2')
                 break
             else: 
-                pattern_3 = searchPattern(text, key, 'area_3')
-                if pattern_3:
-                    areas = re.sub(key+':\s', '', pattern_3.group(), flags = re.IGNORECASE)
+                pattern_4 = searchPattern(text, key, 'area_4')
+                if pattern_4:
+                    areas = processAreas(pattern_4.group(), key, '4')
                     break
+                else:
+                    pattern_3 = searchPattern(text, key, 'area_3')
+                    if pattern_3:
+                        areas = processAreas(pattern_3.group(), key, '3')
+                        break
     return areas
 
 def parseCause(text):
