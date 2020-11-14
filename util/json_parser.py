@@ -5,6 +5,14 @@ from datetime import datetime
 from dateutil import parser
 import re
 import io
+import copy
+from opencage.geocoder import OpenCageGeocode
+
+display = ['table_id', 'id', 'datetime', 'category', 'text', 'date', 'start_time', 'end_time', 'duration', 'cause', 'areas']
+display = ['text', 'areas']
+debug = False
+
+areas_unique = []
 
 def urlToJson(url):
     items = {}
@@ -21,9 +29,7 @@ def urlToJson(url):
 
 def formatPosts(posts):
     formatted_posts = []
-    display = ['table_id', 'id', 'datetime', 'category', 'text', 'date', 'start_time', 'end_time', 'duration', 'cause', 'areas']
-    
-    display = ['text', 'areas']
+    areas_list = []
 
     for post in posts:
         formatted = {}
@@ -46,7 +52,7 @@ def formatPosts(posts):
         formatted["areas"] = "NULL"
         formatted["areas_parent"] = "NULL"
         formatted["areas"] = "NULL"
-    
+
         if formatted["category"] != "uncategorized":
             post_meta = parsePostMeta(post["postText"])
             formatted["date"] = post_meta["date"] if post_meta["date"] else "NULL"
@@ -54,8 +60,15 @@ def formatPosts(posts):
             formatted["end_time"] = post_meta["end_datetime"] if post_meta["end_datetime"] else "NULL"
             formatted["duration"] = post_meta["duration"] if post_meta["duration"] else "NULL"
             formatted["cause"] = post_meta["cause"] if post_meta["cause"] else "NULL"
-            formatted["area_parent"] = post_meta["areas"] if post_meta["areas"] else "NULL"
-            formatted["areas"] = post_meta["areas"] if post_meta["areas"] else "NULL"
+
+            post_areas = parseAreas(post["postText"], post_id)
+            formatted["areas"] = post_areas if post_areas else "NULL"
+
+            for post_area in post_areas:
+                if not(post_area['area'] in areas_unique) and not('Feeder' in post_area['area']):
+                    areas_unique.append(post_area['area'])
+                areas_list.append(post_area)
+
 
         formatted["photos"] = post_images if post_images else "NULL"
         comments = post['postComments']['comments']
@@ -63,15 +76,20 @@ def formatPosts(posts):
 
         formatted_posts.append(formatted)
         displayable_list = []
-        
+
         for post in formatted_posts:
             displayable = {}
             for col in post.keys():
                 if col in display:
                     displayable[col] = post[col]
             displayable_list.append(displayable)
-                
-    return displayable_list
+
+
+
+    return {
+        'posts': displayable_list,
+        'areas': areas_list
+    }
 
 def findAliComment(comments):
     ali_comment = "NULL"
@@ -114,49 +132,53 @@ def searchPattern(text, key, pattern_key):
         # Baguio City: Victoria Village, Quezon Hill Proper, ...
         # has to have feeder and number after colon
         'area_1':"^"+key+"\s*:\s*(\s*(\d\d*\.*\s*)*feeder\s*\d\d*$)(\s*(.*)\s*:\s*(.*)$)*",
-        
+
         # AREAS AFFECTED:
-        # Kapangan: Balakbak, Beleng-Belis, Boklaoan, Cayapes, Cuba, Datakan, Gadang, 
+        # Kapangan: Balakbak, Beleng-Belis, Boklaoan, Cayapes, Cuba, Datakan, Gadang,
         # has to have next line with colon
         'area_2':"^"+key+"\s*:\s*\n(.*\s*:\s*)(.*)$(\n*.*\s*:\s*.*$)*",
-        
-        # AREAS AFFECTED: Kapangan: Balakbak, Beleng-Belis, Boklaoan, Cayapes, Cuba, Datakan, Gadang, 
+
+        # AREAS AFFECTED: Kapangan: Balakbak, Beleng-Belis, Boklaoan, Cayapes, Cuba, Datakan, Gadang,
         # has to have one colon after colon
         'area_4':"^"+key+"\s*:\s*(\w+[ ]*\w*:[ ]*(.*$)\n)+",
-        
+
         # AREAS AFFECTED: Dacap, Nagawa - Ampucao Itogon
         # single line after colon
         'area_3':"^"+key+"\s*:\s*\w*\s*(.*)$",
     }
-        
+
     pattern = re.search(
         patterns[pattern_key],
         text,
         flags = re.IGNORECASE|re.MULTILINE
     )
-    
+
     return pattern
-    
+
 def processAreas(areas, key, pattern):
-    areas = re.sub(key+':\s', '', areas, flags = re.IGNORECASE).split('\n')
+    areas = re.sub(key+':\s*', '', areas, flags = re.IGNORECASE).split('\n')
     processed = []
-    
-    return json.dumps(areas) + '=====' + pattern
-    
+
     for area in areas:
         item = {}
+        item['pattern'] = pattern
+
         if ':' in area:
-            area_arr = area.strip().split(':')            
+            area_arr = area.strip().split(':')
             item["parent"] = area_arr[0]
             if len(area_arr) > 1:
                 item["children"] = area_arr[1].split(',')
-            
+
         else:
-            item["children"] = area.split(',')            
-        processed.append(item)
+            children = area.split(',')
+            if len(children) > 1:
+                item["children"] = children
+
+        if bool(item):
+            processed.append(item)
     return processed
-    
-def parseAreas(text):
+
+def parseAreas(text, post_id):
     keywords = ["areas affected"]
     areas = "NULL"
 
@@ -172,7 +194,7 @@ def parseAreas(text):
             if pattern_2:
                 areas = processAreas(pattern_2.group(), key, '2')
                 break
-            else: 
+            else:
                 pattern_4 = searchPattern(text, key, 'area_4')
                 if pattern_4:
                     areas = processAreas(pattern_4.group(), key, '4')
@@ -182,7 +204,77 @@ def parseAreas(text):
                     if pattern_3:
                         areas = processAreas(pattern_3.group(), key, '3')
                         break
-    return areas
+
+
+    areas_formatted = []
+    for area in areas:
+        if "parent" in area:
+            item = {}
+            item['id'] = 'NULL'
+            item['post_id'] = post_id
+            item['parent'] = 1
+            item['area'] = area['parent'].lower().title()
+            item['coverage'] = 'full'
+            item['pattern'] = area['pattern']
+            areas_formatted.append(item)
+
+        if "children" in area:
+            for child in area['children']:
+                child = child.strip().replace(';', '').replace('.', '')
+                if child:
+                    child = child.lower().title()
+                    child_item = {}
+                    child_item['id'] = 'NULL'
+                    child_item['post_id'] = post_id
+                    child_item['parent'] = 0
+                    child_item['area'] = child
+                    child_item['coverage'] = 'full'
+                    child_item['pattern'] = area['pattern']
+
+                    if 'And Parts Of' in child:
+                        areas_formatted = areas_formatted + separate('And Parts Of', child_item, [], 'partial')
+                    else:
+                        if 'Parts Of' in child or 'Parts Og' in child:
+                            child_item['area'] = child_item['area'].replace('Parts Of', '').replace('Parts Og', '').strip()
+                            child_item['coverage'] = 'partial'
+
+                        if 'And Whole Of' in child_item['area']:
+                            areas_formatted = areas_formatted + separate('And Whole Of', child_item)
+                        else:
+                            if 'Whole Of' in child_item['area']:
+                                child_item['area'] = child_item['area'].replace('Whole Of', '').strip()
+                            elif 'And Whole' in child_item['area']:
+                                areas_formatted = areas_formatted + separate('And Whole', child_item)
+                            elif 'Whole' in child_item['area']:
+                               child_item['area'] = child_item['area'].replace('Whole', '')
+
+                            if child_item['area']:
+                                areas_formatted.append(child_item)
+    return areas_formatted
+
+def separate(separator, child_item, areas_formatted = [], coverage = 'full'):
+    parts = child_item['area'].split(separator)
+    if len(parts) > 1:
+        for part in parts:
+            print('part:', part)
+            print('coverage:', coverage)
+            part_copy = copy.deepcopy(child_item)
+            part_copy['area'] = part.strip()
+            print(separator)
+            if 'parts' in separator:
+                part_copy['coverage'] = 'partial'
+            else:
+                part_copy['coverage'] = 'full'
+
+            if part_copy['area']:
+                if 'And Whole Of' in part_copy['area']:
+                    areas_formatted = separate('And Whole Of', part_copy, areas_formatted)
+                elif 'Whole of' in part_copy['area']:
+                    areas_formatted = separate('Whole of', part_copy, areas_formatted)
+                else:
+                    areas_formatted.append(part_copy)
+    return areas_formatted
+
 
 def parseCause(text):
     keywords = ["cause", "purpose", "findings"]
@@ -205,7 +297,6 @@ def parseCause(text):
 def parsePostMeta(text):
 
     cause = parseCause(text)
-    areas = parseAreas(text)
     date = ""
     start_datetime = ""
     end_datetime = ""
@@ -326,8 +417,7 @@ def parsePostMeta(text):
                 "start_datetime": start_datetime,
                 "end_datetime": end_datetime,
                 "duration": timeDiff(start_datetime, end_datetime),
-                "cause": cause,
-                "areas": areas
+                "cause": cause
             }
 
     print("XXXXXXXX")
@@ -401,8 +491,7 @@ def parsePostMeta(text):
         "start_datetime": start_datetime,
         "end_datetime": end_datetime,
         "duration": timeDiff(start_datetime, end_datetime),
-        "cause": cause,
-        "areas": areas
+        "cause": cause
     }
 
 def parsePostMeta1(text):
@@ -552,8 +641,8 @@ def csv_formatter(string):
 
     return outstream.getvalue() # get the contents of the fake file
 
-def writeCSV(posts):
-    data_file = open('posts.csv', 'w')
+def writeCSV(posts, filename = 'posts.csv'):
+    data_file = open(filename, 'w')
     # create the csv writer object
     csv_writer = csv.writer(data_file)
 
@@ -569,7 +658,9 @@ def writeCSV(posts):
             count += 1
 
         post_data = list(post.values())
-        # post_data[4] = csv_formatter(post_data[4]) # process text to make it csv safe
+        text_index = display.index('text')
+        if filename == 'posts.csv':
+            post_data[text_index] = csv_formatter(post_data[text_index]) # process text to make it csv safe
 
         # Writing data of CSV file
         csv_writer.writerow(post_data)
@@ -577,7 +668,47 @@ def writeCSV(posts):
     data_file.close()
     return 'done'
 
-# posts = urlToJson('https://api.apify.com/v2/datasets/Nvp0VWzJqop2oZc5N/items?format=json&clean=1')
-posts = fileToJson()
-writeCSV(posts)
+def toLatLon(area):
+    key = '29df1cd1c01f40b092d1bda88ad3123b'
+    geocoder = OpenCageGeocode(key)
+    query = area
+    result = geocoder.geocode(query, bounds='120.24261,15.61246,121.48682,17.00951', countrycode='ph', limit=1)
+    if result:
+        return result[0]['geometry']
+    return ''
+
+def latLong():
+    areas = []
+    with open('areas_latlon.json') as jsonfile:
+        items = json.loads(jsonfile.read())
+
+    for item in items:
+        area_item = {}
+        area_item['area'] = item['area']
+        latlon = json.loads(item['lan_lon'])
+        if 'geometry' in latlon:
+            area_item['lat'] = latlon['geometry']['lat']
+        areas.appends(area_item)
+
+    writeCSV(areas, 'areas_latlng.csv')
+
+if __name__ == "__main__":
+    # posts = urlToJson('https://api.apify.com/v2/datasets/Nvp0VWzJqop2oZc5N/items?format=json&clean=1')
+    data = fileToJson()
+    posts = data['posts']
+    writeCSV(data['posts'])
+    writeCSV(data['areas'], 'areas.csv')
+    latLong()
+
+    areas_latlon = []
+
+    # for area in areas_unique:
+    #     area_obj = {}
+    #     print(area)
+    #     area_obj['lan_lon'] = toLatLon(area)
+    #     area_obj['area'] = area
+
+    #     areas_latlon.append(area_obj)
+
+    writeCSV(areas_latlon, 'areas_latlon.csv')
 # 3381355871917393

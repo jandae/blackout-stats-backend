@@ -54,6 +54,8 @@ def main():
 	days_count_query = "SELECT date, count(date) as count FROM posts where category != 'uncategorized' and date is not null group by date"
 	hours_down_query = "SELECT sum(duration) as total FROM posts where category != 'uncategorized' and duration is not null"
 	birds_query = "SELECT count(cause) as count FROM posts where cause like '%bird%' or cause like '%crow%'"
+	cause_query = "SELECT cause FROM posts where cause is not null"
+	areas_query = "SELECT area, count(area) as count FROM areas where parent = 0 group by area"
 
 	all_posts = query(all_posts_query)[0]["count"]
 	blackout_posts = query(relevant_query)[0]['count']
@@ -70,8 +72,29 @@ def main():
 	days = len(days_count)
 	days_count_processed = json.dumps(days_count, default=json_serial) #convert date to string
 	birds = query(birds_query)[0]['count']
+	causes = query(cause_query)
+	areas = query(areas_query)
 
-	# print(days_count_processed)
+	print(areas)
+	with open('./util/areas.json', 'w') as outfile:
+		json.dump(areas, outfile)
+
+	#process causes
+	exclude = ["of", "to", "on", "and", "by", "that"]
+	words_count = {}
+	for cause in causes:
+		cause_words = cause["cause"].lower().strip().split(" ")
+		for word in cause_words:
+			if not(word in exclude):
+				if word in words_count:
+					words_count[word]+=1
+				else:
+					words_count[word] = 1
+
+	words_count_sorted = sorted(words_count.items(), key=lambda kv: kv[1])
+	print(words_count_sorted)
+	# for word, value in words_count.items():
+	# 	print(word, ":", value)
 
 	#compute average per week
 	# formula:
