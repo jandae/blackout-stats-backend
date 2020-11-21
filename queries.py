@@ -56,6 +56,7 @@ def main():
 	birds_query = "SELECT count(cause) as count FROM posts where cause like '%bird%' or cause like '%crow%'"
 	cause_query = "SELECT cause FROM posts where cause is not null"
 	areas_query = "SELECT area, count(area) as count FROM areas where parent = 0 group by area"
+	category_query = "SELECT category, count(category) as count FROM posts where category != 'uncategorized' group by category"
 
 	all_posts = query(all_posts_query)[0]["count"]
 	blackout_posts = query(relevant_query)[0]['count']
@@ -69,11 +70,14 @@ def main():
 	days_count = query(days_count_query)
 	days_down = (int(query(hours_down_query)[0]['total'])/60)/24
 	hours_down = (days_down % 1)*24
+	minutes_down = (hours_down % 1)*60
 	days = len(days_count)
 	days_count_processed = json.dumps(days_count, default=json_serial) #convert date to string
 	birds = query(birds_query)[0]['count']
 	causes = query(cause_query)
 	areas = query(areas_query)
+	capitalize = lambda item: {'category': item["category"].title(), 'count': item["count"]}
+	categories = list(map(capitalize, query(category_query)))
 
 	print(areas)
 	with open('./util/areas.json', 'w') as outfile:
@@ -141,8 +145,11 @@ def main():
 		'updated_at': updated_at,
 		'days_count': days_count_processed,
 		'total_days_since': totaldaysCount(),
-		'total_days_down': str(round(days_down)) + ' days ' + str(round(hours_down, 2)) + ' hours' ,
-		'birds': birds
+		'total_days_down': str(int(days_down)),
+		'total_hours_down': str(int(hours_down)),
+		'total_minutes_down': str(int(minutes_down)),
+		'birds': birds,
+		'categories': json.dumps(categories)
 	}
 
 	print(str(days_down))
