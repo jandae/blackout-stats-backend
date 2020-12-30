@@ -53,9 +53,15 @@ def main():
 	first_post_query = "SELECT min(date) as oldest FROM posts where category != 'uncategorized'"
 	days_count_query = "SELECT date, count(date) as count FROM posts where category != 'uncategorized' and date is not null group by date"
 	hours_down_query = "SELECT sum(duration) as total FROM posts where category != 'uncategorized' and duration is not null"
+	martinez_query = "SELECT count(cause) as count FROM posts where cause like '%martinez%'"
+	crow_query = "SELECT count(cause) as count FROM posts where cause like '%crow%'"
 	birds_query = "SELECT count(cause) as count FROM posts where cause like '%bird%' or cause like '%crow%'"
+	tree_query = "SELECT count(cause) as count FROM posts where cause is not null and cause like '%tree%' or cause like '%trees%' or cause like '%branch%' or cause like '%branches%' or cause like '%pine%'"
+	bumped_query = "SELECT count(cause) as count FROM posts where cause is not null and cause like '%backhoe%' or cause like '%bumped%' or cause like '%back hoe%'"
+	backhoe_query = "SELECT count(cause) as count FROM posts where cause is not null and cause like '%backhoe%' or cause like '%back hoe%'"
+	lightning_query = "SELECT count(cause) as count FROM posts where cause is not null and cause like '%lightning%'"
 	cause_query = "SELECT cause FROM posts where cause is not null"
-	areas_query = "SELECT area, count(area) as count FROM areas where parent = 0 group by area"
+	areas_query = "SELECT area, count(area) as count FROM areas where parent = 0 group by area order by count desc"
 	category_query = "SELECT category, count(category) as count FROM posts where category != 'uncategorized' group by category"
 
 	all_posts = query(all_posts_query)[0]["count"]
@@ -74,29 +80,47 @@ def main():
 	days = len(days_count)
 	days_count_processed = json.dumps(days_count, default=json_serial) #convert date to string
 	birds = query(birds_query)[0]['count']
+	martinez = query(martinez_query)[0]['count']
+	crow = query(crow_query)[0]['count']
+	trees = query(tree_query)[0]['count']
+	bumped = query(bumped_query)[0]['count']
+	backhoe = query(backhoe_query)[0]['count']
+	lightning = query(lightning_query)[0]['count']
 	causes = query(cause_query)
 	areas = query(areas_query)
 	capitalize = lambda item: {'category': item["category"].title(), 'count': item["count"]}
 	categories = list(map(capitalize, query(category_query)))
 
-	print(areas)
+	# print(areas)
 	with open('./util/areas.json', 'w') as outfile:
 		json.dump(areas, outfile)
 
 	#process causes
-	exclude = ["of", "to", "on", "and", "by", "that"]
+	exclude = ['that', 'with', 'along', 'cause', 'caused', 'lamut', 'ambuklao', 'city', 'hill', 'baguio', 'ambuclao', 'sepmo', 'on-going', 'from', 'legarda', 'nearly', 'secondary', 'pacdal', 'irisan', 'camp']
 	words_count = {}
 	for cause in causes:
-		cause_words = cause["cause"].lower().strip().split(" ")
+		cause_words = cause["cause"].lower().strip().replace('.', '').replace(',', '').replace(':', '').replace('-', ' ').split(" ")
 		for word in cause_words:
 			if not(word in exclude):
-				if word in words_count:
-					words_count[word]+=1
-				else:
-					words_count[word] = 1
+				if len(word) > 3:
+					if word in words_count:
+						words_count[word]+=1
+					else:
+						words_count[word] = 1
+	print(words_count)
 
-	words_count_sorted = sorted(words_count.items(), key=lambda kv: kv[1])
-	print(words_count_sorted)
+	words_cleaned = []
+
+	for w, val in words_count.items():
+		if val > 3:
+			words_cleaned.append({'name': w, 'value': val})
+			# words_cleaned[w] = val
+
+	print(str(len(words_cleaned)) + '=====')
+	# words_count_sorted = sorted(words_cleaned.items(), key=lambda kv: kv[1], reverse=True)
+	words_count_sorted = words_cleaned
+	# print(words_count_sorted)
+	# print(len(words_count_sorted))
 	# for word, value in words_count.items():
 	# 	print(word, ":", value)
 
@@ -149,7 +173,15 @@ def main():
 		'total_hours_down': str(int(hours_down)),
 		'total_minutes_down': str(int(minutes_down)),
 		'birds': birds,
-		'categories': json.dumps(categories)
+		'martinez': martinez,
+		'crow': crow,
+		'trees': trees,
+		'bumped': bumped,
+		'backhoe': backhoe,
+		'lightning' : lightning,
+		'categories': json.dumps(categories),
+		'words': json.dumps(words_count_sorted),
+		'areas': json.dumps(areas),
 	}
 
 	print(str(days_down))
