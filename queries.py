@@ -57,6 +57,7 @@ def main():
 	crow_query = "SELECT count(cause) as count FROM posts where cause like '%crow%'"
 	birds_query = "SELECT count(cause) as count FROM posts where cause like '%bird%' or cause like '%crow%'"
 	tree_query = "SELECT count(cause) as count FROM posts where cause is not null and cause like '%tree%' or cause like '%trees%' or cause like '%branch%' or cause like '%branches%' or cause like '%pine%'"
+	pine_query = "SELECT count(cause) as count FROM posts where cause like '%pine%'"
 	bumped_query = "SELECT count(cause) as count FROM posts where cause is not null and cause like '%backhoe%' or cause like '%bumped%' or cause like '%back hoe%'"
 	backhoe_query = "SELECT count(cause) as count FROM posts where cause is not null and cause like '%backhoe%' or cause like '%back hoe%'"
 	lightning_query = "SELECT count(cause) as count FROM posts where cause is not null and cause like '%lightning%'"
@@ -83,6 +84,7 @@ def main():
 	martinez = query(martinez_query)[0]['count']
 	crow = query(crow_query)[0]['count']
 	trees = query(tree_query)[0]['count']
+	pine = query(pine_query)[0]['count']
 	bumped = query(bumped_query)[0]['count']
 	backhoe = query(backhoe_query)[0]['count']
 	lightning = query(lightning_query)[0]['count']
@@ -176,6 +178,7 @@ def main():
 		'martinez': martinez,
 		'crow': crow,
 		'trees': trees,
+		'pine': pine,
 		'bumped': bumped,
 		'backhoe': backhoe,
 		'lightning' : lightning,
